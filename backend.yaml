@@ -1,0 +1,59 @@
+# backend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mern-stack
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      initContainers:
+      - name: wait-for-mongodb
+        image: busybox
+        command: ['sh', '-c', 'until nc -z mongodb-service 27017; do echo "Waiting for MongoDB"; sleep 2; done']
+      containers:
+      - name: backend
+        image: subfuzion/netcat  # Test image that works in Killercoda
+        command: ["sh", "-c", "echo 'Backend connected to MongoDB at $MONGO_URL' >> /var/log/backend.log && while true; do echo 'Heartbeat: $(date)' >> /var/log/backend.log; sleep 5; done"]
+        env:
+        - name: MONGO_URL
+          valueFrom:
+            secretKeyRef:
+              name: backend-secret
+              key: MONGO_URL
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+      - name: sidecar
+        image: busybox
+        command: ['sh', '-c', 'tail -f /var/log/backend.log']
+        volumeMounts:
+        - name: logs
+          mountPath: /var/log
+      volumes:
+      - name: logs
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: mern-stack
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
